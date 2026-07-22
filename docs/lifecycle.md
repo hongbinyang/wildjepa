@@ -173,10 +173,24 @@ the natural point to revisit whether a real config-comparing registry (not
 just names) is worth building -- see
 [Run identity](#run-identity-what-identifies-a-run-today).
 
-## Phase 9: Cleanup
+## Phase 9: List existing runs
 
 ```bash
 python scripts/manage_runs.py list
+```
+
+Prints every directory under `outputs/` -- i.e. every `run_name` that
+exists -- with last-modified time and size. Not tied to any one point in the
+sequence above: useful before resuming (Phase 4) to find the right
+`run_name`, before naming a new comparison run (Phase 8) to avoid colliding
+with an old one, or just to see what's accumulated. Since a run's directory
+name *is* its `run_name` (no separate registry to keep in sync -- see
+[Run identity](#run-identity-what-identifies-a-run-today)), this is a direct
+listing of `outputs/`, not a lookup against some other source of truth.
+
+## Phase 10: Cleanup
+
+```bash
 python scripts/manage_runs.py delete <run_name>          # prompts for confirmation
 python scripts/manage_runs.py delete <run_name> --yes    # for scripted cleanup
 ```
@@ -185,9 +199,7 @@ Checkpoints are large (a single ResNet-50 checkpoint is ~280MB; I-JEPA
 pretraining checkpoints will be larger), so failed experiments, superseded
 hyperparameter sweeps, and finished ablations are worth deleting once their
 results are recorded elsewhere (a comparison table, this document, `roadmap.md`).
-Since a run's directory name *is* its `run_name` (no separate registry to
-keep in sync -- see [Run identity](#run-identity-what-identifies-a-run-today)),
-deleting is just deleting the directory; `manage_runs.py` exists mainly so
+Deleting is just deleting the directory; `manage_runs.py` exists mainly so
 that's a deliberate, confirmed action rather than a bare `rm -rf`.
 
 ---
