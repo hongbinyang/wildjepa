@@ -1,0 +1,22 @@
+# Top-level Hydra config. Compose experiments by overriding any group on the
+# command line, e.g.:
+#   python scripts/train.py backend=fb_ijepa device=cuda data=iwildcam_full
+#
+defaults:
+  - backend: scratch
+  - device: auto
+  - data: iwildcam_subset
+  - train: quick_check
+  - _self_
+
+seed: 42
+# run_name doubles as the run's directory name (outputs/<run_name>/) -- pass
+# a name explicitly (run_name=erm-baseline-v1) for a stable, resumable
+# identity instead of the timestamp default. See docs/lifecycle.md "Run
+# identity".
+run_name: ${now:%Y-%m-%d}_${now:%H-%M-%S}
+output_dir: outputs/${run_name}
+
+hydra:
+  run:
+    dir: ${output_dir}

@@ -1,0 +1,9 @@
+# Small, stratified subset for the "quick feasibility check" phase -- proves
+# the pipeline is plumbed correctly before scaling to the full benchmark.
+name: iwildcam_subset
+root: data/iwildcam
+num_species: 8
+max_images_per_species: 500
+image_size: 224
+batch_size: 32
+num_workers: 4

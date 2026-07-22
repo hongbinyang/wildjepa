@@ -1,0 +1,69 @@
+# Roadmap
+
+Status key: `[ ]` not started · `[~]` scaffolded/stubbed · `[x]` done
+
+## Phase 0 — Scaffold
+
+- [x] Repo structure, conda env, Hydra config system, git init
+- [x] Backend interface (`JEPAEncoder`/`JEPAPredictor`) + factory
+- [x] Stub `scratch` / `fb_ijepa` / `hf_ijepa` backends (raise `NotImplementedError`)
+- [~] Baseline sanity check: reproduce published WILDS ERM macro-F1 with a plain
+      supervised ResNet-50, to trust the eval harness before building on top of it.
+      `scripts/train_erm_baseline.py` implemented (docs/usage.md); a real run against
+      the full benchmark is in progress -- not yet checked off pending the actual
+      reproduced number.
+
+## Phase 1 — Quick feasibility check (current target)
+
+- [x] Implement `wildjepa.data`: WILDS `iWildCam2020-WILDS` wrapper, stratified small-species
+      subset per `configs/data/iwildcam_subset.yaml`, multi-block masking collator, plus a
+      no-download synthetic dataset for pipeline smoke tests
+- [x] Implement `ScratchEncoder`/`ScratchPredictor`/`IJEPA` (ViT-S/16-capable, per
+      `configs/backend/scratch.yaml`) -- full ViT, masking, predictor, EMA, loss
+- [x] Implement `wildjepa.eval`: macro-F1, per-class F1, few-shot index sampling, published
+      baseline comparison table
+- [x] Implement `train/pretrain.py`, `train/linear_probe.py`, `train/finetune.py`
+- [x] Implement real (non-stub) `fb_ijepa`/`hf_ijepa` adapters
+- [x] Full test suite incl. a tiny end-to-end pretraining integration test
+- [x] **Run `pytest tests/` on real hardware** -- 42/42 passing on the real M2 Mac.
+- [x] Download the real `iWildCam2020-WILDS` data (`scripts/download_data.py`) --
+      done, ~12GB at `data/iwildcam`.
+- [x] Fixed a real bug surfaced by running on real hardware: `make_pretrain_collate_fn`/
+      `make_supervised_collate_fn` returned local closures, unpicklable by
+      `multiprocessing`'s spawn context (macOS/Windows default) -- broke
+      `DataLoader(num_workers>0)`. Converted to module-level callable classes.
+- [ ] Cross-check: load a released `facebookresearch/ijepa` checkpoint into `ScratchEncoder`,
+      diff output embeddings against `fb_ijepa`/`hf_ijepa` backends on identical inputs (the
+      within-scratch checkpoint round-trip test exists; the cross-backend one needs an actual
+      downloaded checkpoint, which needs step above first)
+- [ ] First linear-probe numbers on the real iWildCam subset vs. ERM baseline (proof the
+      pipeline works on real data, not yet a claim about the full benchmark)
+
+## Phase 2 — Domain-adaptive pretraining at scale
+
+- [ ] Continue I-JEPA pretraining on the *full* unlabeled `iWildCam2020-WILDS` pool
+      (and optionally additional LILA BC camera-trap data)
+- [ ] Move training off the M2 to cloud GPU (the device abstraction already supports this —
+      no code changes expected, just `device=cuda` + a bigger `data=iwildcam_full`)
+- [ ] Full linear-probe + few-shot fine-tune evaluation, ID and OOD, vs. published ERM baseline
+
+## Phase 3 — Same-data SSL control
+
+- [ ] Train a DINOv2 or MAE baseline on the *same* unlabeled pretraining pool, same eval
+      protocol — isolates whether any win is coming from self-supervision in general or from
+      I-JEPA's masked-latent-prediction objective specifically (deferred by choice from Phase 1;
+      see `design.md`)
+
+## Phase 4 — Write-up
+
+- [ ] Ablations: masking ratio/scale, ViT size, momentum schedule
+- [ ] Comparison table: ERM / DINOv2 / MAE / I-JEPA, ID + OOD macro-F1, few-shot curves
+- [ ] Decide whether results warrant a public write-up (blog post, arXiv note, or just an
+      internal report)
+
+## Open questions to revisit
+
+- Does continued pretraining need the full `iWildCam` pool, or does adding other LILA BC
+  datasets materially help transfer to genuinely new species/locations?
+- Is ViT-S/16 sufficient, or does the label-efficiency gap only show up at ViT-B/L scale?
+- Cloud compute budget/provider once we leave the M2 (Phase 2) — not yet decided.

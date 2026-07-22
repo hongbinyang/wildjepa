@@ -1,0 +1,27 @@
+name: wildjepa
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  # PyTorch 2.3+ has mature MPS support; conda-forge/pytorch channel picks the
+  # right build (CUDA on Linux/Windows w/ NVIDIA GPU, MPS on Apple Silicon,
+  # CPU fallback everywhere else) based on the host automatically.
+  - pytorch>=2.3
+  - torchvision>=0.18
+  - numpy
+  - pandas
+  - pillow
+  - scikit-learn
+  - matplotlib
+  - pytest
+  - pytest-cov
+  - pip:
+      - hydra-core>=1.3
+      - omegaconf>=2.3
+      - transformers>=4.41       # for the hf_ijepa backend
+      - timm>=1.0                # ViT building blocks / reference layers
+      - wandb                    # optional experiment tracking, not required to run
+      - wilds                    # WILDS benchmark datasets (iWildCam2020-WILDS)

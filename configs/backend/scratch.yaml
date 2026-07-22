@@ -1,0 +1,30 @@
+# Our own I-JEPA implementation. This is the primary path for the project --
+# fb_ijepa and hf_ijepa exist mainly as reference implementations to validate
+# this one against (see docs/design.md).
+name: scratch
+
+encoder:
+  arch: vit_small_patch16      # small enough to iterate on quickly on an M2
+  img_size: 224
+  patch_size: 16
+  embed_dim: 384
+  depth: 12
+  num_heads: 6
+
+predictor:
+  depth: 6
+  embed_dim: 192                # narrower than the encoder, per the I-JEPA paper
+  num_heads: 6
+
+ema:
+  momentum_start: 0.996
+  momentum_end: 1.0             # target encoder momentum schedule over training
+
+masking:
+  num_target_blocks: 4
+  target_scale: [0.15, 0.2]
+  target_aspect_ratio: [0.75, 1.5]
+  context_scale: [0.85, 1.0]
+
+pretrained_checkpoint: null      # set to a facebookresearch/ijepa .pth to warm-start
+                                  # or to cross-check outputs against fb_ijepa/hf_ijepa

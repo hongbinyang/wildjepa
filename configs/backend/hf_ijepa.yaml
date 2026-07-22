@@ -1,0 +1,8 @@
+# Reference implementation: Hugging Face `transformers` I-JEPA wrapper.
+# Fastest path to a pretrained checkpoint; used for cross-checking and as a
+# convenience baseline, not for implementing training internals.
+name: hf_ijepa
+
+model_id: facebook/ijepa_vith14_1k
+pretrained: true
+pretrained_checkpoint: null   # optional local override on top of the HF Hub weights above

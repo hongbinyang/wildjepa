@@ -1,0 +1,20 @@
+# Top-level Hydra config for scripts/train_erm_baseline.py. Separate from
+# configs/config.yaml because the ERM baseline has no `backend` group -- it's
+# a plain supervised ResNet-50, not a JEPA variant.
+defaults:
+  - device: auto
+  - data: iwildcam_full
+  - train: erm_baseline
+  - _self_
+
+seed: 42
+# run_name doubles as the run's directory name (outputs/<run_name>/) -- pass
+# a name explicitly (run_name=erm-baseline-v1) for a stable, resumable
+# identity instead of the timestamp default. See docs/lifecycle.md "Run
+# identity".
+run_name: ${now:%Y-%m-%d}_${now:%H-%M-%S}
+output_dir: outputs/${run_name}
+
+hydra:
+  run:
+    dir: ${output_dir}

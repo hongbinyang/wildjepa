@@ -1,0 +1,11 @@
+# Hyperparams match the WILDS paper's iWildCam ERM (ResNet-50) config, so
+# the reproduced number is actually comparable to the published baseline.
+name: erm_baseline
+mode: erm_baseline
+epochs: 12
+lr: 3.0e-5
+weight_decay: 0.0
+eval_every: 1
+log_every: 50
+checkpoint_every_epochs: 1   # save a resumable checkpoint after every N epochs
+resume_from: null            # path to a checkpoints/erm_baseline_*.pt to resume from

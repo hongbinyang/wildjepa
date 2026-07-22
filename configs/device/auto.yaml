@@ -1,0 +1,3 @@
+# Resolved at runtime by wildjepa.utils.device: cuda > mps > cpu.
+name: auto
+allow_mps_fallback: true

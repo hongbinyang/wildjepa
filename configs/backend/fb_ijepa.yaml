@@ -1,0 +1,7 @@
+# Reference implementation: facebookresearch/ijepa, used to validate the
+# scratch backend's outputs and/or as a strong pretrained baseline.
+name: fb_ijepa
+
+repo_path: ${oc.env:WILDJEPA_FB_IJEPA_PATH,third_party/ijepa}
+arch: vit_huge_patch14
+pretrained_checkpoint: null   # path to official release, e.g. IN1K-vit.h.14-300e.pth.tar

@@ -1,0 +1,10 @@
+# Fully self-contained synthetic dataset -- no download, no internet. Used for
+# pipeline smoke-testing (does the whole loop run and actually learn
+# something above chance?) before spending time on the real iWildCam download.
+# Not a stand-in for the real benchmark -- see docs/design.md.
+name: synthetic
+num_species: 8
+images_per_species: 64
+image_size: 224
+batch_size: 16
+num_workers: 0

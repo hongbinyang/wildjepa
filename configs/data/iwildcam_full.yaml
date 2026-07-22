@@ -1,0 +1,9 @@
+# Full WILDS iWildCam2020-WILDS split -- 182 species, ID + OOD test sets.
+# Use once the scratch pipeline is validated on the subset.
+name: iwildcam_full
+root: data/iwildcam
+num_species: null
+max_images_per_species: null
+image_size: 224
+batch_size: 64
+num_workers: 8

@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Environments
+.venv/
+venv/
+.conda/
+
+# Data & checkpoints (large, fetched separately — see docs/design.md)
+# Anchored to the repo root (leading slash) -- an unanchored "data/" also
+# matches src/wildjepa/data/, which is a real tracked package, not a data dir.
+/data/
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+
+# Experiment tracking / logs
+wandb/
+outputs/
+multirun/
+logs/
+*.log
+
+# Notebooks
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+
+# Hydra
+.hydra/
+
+# Leftover cruft from a sandbox filesystem quirk during initial git setup --
+# harmless stray directories, never meant to be tracked. Safe to delete.
+.git_broken/
+.git_broken2/

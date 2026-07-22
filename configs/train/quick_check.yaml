@@ -1,0 +1,7 @@
+name: quick_check
+mode: linear_probe   # linear_probe | pretrain | finetune
+epochs: 5
+lr: 1.0e-3
+weight_decay: 0.05
+eval_every: 1
+log_every: 20
