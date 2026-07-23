@@ -125,12 +125,16 @@ class VisionTransformer(nn.Module):
         """x: (B, C, H, W). patch_mask: (B, N) bool, True = keep.
 
         Returns (tokens, idx, pad_mask):
-            tokens: (B, K_max, D) post-norm representations of kept patches
-            idx: (B, K_max) long, original patch-grid index of each token
-            pad_mask: (B, K_max) bool, True = padding (not a real patch)
+            tokens: (B, num_patches, D) post-norm representations of kept patches
+            idx: (B, num_patches) long, original patch-grid index of each token
+            pad_mask: (B, num_patches) bool, True = padding (not a real patch)
+
+        Always padded to the full `num_patches` (not each batch's own smaller
+        dynamic max) -- see gather_with_padding's pad_to docs for why: a
+        varying shape here forces MPS to recompile its graph on every batch.
         """
         x = self.patch_embed(x) + self.pos_embed
-        x, idx, pad_mask = gather_with_padding(x, patch_mask)
+        x, idx, pad_mask = gather_with_padding(x, patch_mask, pad_to=self.num_patches)
         for blk in self.blocks:
             x = blk(x, pad_mask)
         return self.norm(x), idx, pad_mask

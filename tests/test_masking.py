@@ -105,3 +105,39 @@ def test_gather_with_padding_shapes_and_values():
     # row 0's first kept token should be x[0, 0]
     assert torch.equal(gathered[0, 0], x[0, 0])
     assert idx[0, 0].item() == 0
+
+
+def test_gather_with_padding_pad_to_gives_fixed_shape_regardless_of_mask():
+    """The MPS-motivated fix: passing pad_to should produce the same shape
+    no matter how many patches a given mask actually keeps -- unlike the
+    default (dynamic per-call) behavior tested above. See gather_with_padding's
+    pad_to docs and docs/design.md "Honest limitations"."""
+    x = torch.arange(2 * 5 * 3, dtype=torch.float32).reshape(2, 5, 3)
+    sparse_mask = torch.tensor([[True, False, False, False, False], [False, True, False, False, False]])
+    dense_mask = torch.tensor([[True, True, True, True, False], [True, True, True, True, True]])
+
+    sparse_out, _, sparse_pad = gather_with_padding(x, sparse_mask, pad_to=5)
+    dense_out, _, dense_pad = gather_with_padding(x, dense_mask, pad_to=5)
+
+    assert sparse_out.shape == dense_out.shape == (2, 5, 3)
+    assert sparse_pad.shape == dense_pad.shape == (2, 5)
+    # sanity: pad_to=5 still correctly marks the actual padding slots
+    assert sparse_pad.sum(dim=1).tolist() == [4, 4]
+    assert dense_pad.sum(dim=1).tolist() == [1, 0]
+
+
+def test_collator_block_size_is_fixed_across_calls_not_per_call():
+    """The actual bug this project hit: block size (and therefore every
+    downstream tensor shape) used to be resampled on every __call__, which
+    meant a new shape on nearly every training batch -- catastrophic on
+    MPS, which recompiles its graph per shape. Block size must now be fixed
+    once, at construction, and stay identical across every call for the
+    life of the collator."""
+    cfg = _small_cfg()
+    collator = MultiBlockMaskCollator(cfg)
+    images = torch.randn(4, 3, 64, 64)
+
+    first_counts = [tm.sum(dim=1)[0].item() for tm in collator(images)["target_masks"]]
+    for _ in range(10):
+        counts = [tm.sum(dim=1)[0].item() for tm in collator(images)["target_masks"]]
+        assert counts == first_counts, "target-block size must stay identical across calls"

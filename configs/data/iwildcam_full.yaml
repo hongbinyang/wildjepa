@@ -5,5 +5,13 @@ root: data/iwildcam
 num_species: null
 max_images_per_species: null
 image_size: 224
-batch_size: 64
+# batch_size=64 caused wildly unstable MPS step times (3-137s/step, never
+# converging) on a memory-constrained M2 Mac (16GB RAM, ~9GB already in
+# swap from other running apps) -- Apple Silicon's unified memory means MPS
+# competes directly with everything else on the machine for the same RAM.
+# 32 measured fast and completely stable (~1.1s/step, clean convergence
+# from step 1). Not necessarily a limit on other hardware (e.g. CUDA with
+# dedicated VRAM) -- override with data.batch_size=64 there if desired. See
+# docs/design.md "Honest limitations".
+batch_size: 32
 num_workers: 8

@@ -63,6 +63,10 @@ def test_forward_full_shape():
 
 
 def test_forward_masked_shape_and_padding():
+    """Padded to the full num_patches (16), not each batch's own dynamic
+    max (10 here) -- a fixed shape regardless of the mask is what keeps
+    this stable on MPS across batches with different keep-counts; see
+    gather_with_padding's pad_to docs."""
     vit = _tiny_vit()
     x = torch.randn(3, 3, 64, 64)
     mask = torch.zeros(3, 16, dtype=torch.bool)
@@ -72,12 +76,14 @@ def test_forward_masked_shape_and_padding():
 
     tokens, idx, pad_mask = vit.forward_masked(x, mask)
 
-    assert tokens.shape == (3, 10, 32)  # padded to the max (10)
-    assert idx.shape == (3, 10)
-    assert pad_mask.shape == (3, 10)
+    assert tokens.shape == (3, 16, 32)
+    assert idx.shape == (3, 16)
+    assert pad_mask.shape == (3, 16)
     assert pad_mask[1, 5:].all()  # sample 1 only had 5 real tokens
-    assert not pad_mask[0].any()
-    assert not pad_mask[2].any()
+    assert pad_mask[0, 10:].all()  # sample 0 only had 10 real tokens
+    assert pad_mask[2, 10:].all()  # sample 2 only had 10 real tokens
+    assert not pad_mask[0, :10].any()
+    assert not pad_mask[2, :10].any()
 
 
 def test_forward_full_is_deterministic_in_eval_mode():

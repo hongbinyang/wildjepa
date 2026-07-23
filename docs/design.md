@@ -220,10 +220,26 @@ knows that a `test_macro_f1` result is the OOD comparison and `id_test_macro_f1`
   `Conv2d` module's `forward` directly (numerically identical, verified to float32 precision;
   `self.proj` stays a real `nn.Conv2d` for checkpoint-key compatibility -- see
   `models/scratch/patch_embed.py`).
-- **Not yet verified:** the scratch I-JEPA pretraining objective has only been run against the
-  synthetic dataset so far, not real `iWildCam` data -- see `roadmap.md` Phase 1. The
-  `fb_ijepa`/`hf_ijepa` checkpoint-key-mapping assumptions haven't been checked against a real
-  official checkpoint (no checkpoint downloaded yet, no cross-backend embedding diff run). No
-  real I-JEPA linear-probe numbers exist yet.
+- **A second real bug found and fixed, chasing a different symptom:** getting a full-benchmark
+  pretraining run going surfaced "training is catastrophically slow" (3-137s/step, never
+  converging). First fix attempt: `MultiBlockMaskCollator` was resampling block *size* on every
+  batch (not just position), so nearly every step had a different tensor shape -- expensive on
+  MPS, which recompiles its graph per shape. Fixed to sample size once per collator instance.
+  Genuine improvement, kept -- but measurement afterward showed it wasn't the dominant cause.
+  The actual cause: `iwildcam_full`'s `batch_size=64` default exceeded what this memory-constrained
+  M2 Mac (16GB RAM, ~9GB already in swap from other running apps) could handle -- Apple Silicon's
+  unified memory means MPS competes with every other running app for the same RAM. Measured
+  directly: `64` -> wildly unstable; `32` -> fast and completely stable from the first step.
+  Default changed to `32` (`configs/data/iwildcam_full.yaml`), not necessarily a limit on
+  hardware with dedicated VRAM. See `roadmap.md` and `usage.md`.
+- **Real progress, real gaps remaining:** the scratch I-JEPA pretraining objective has now run
+  successfully against real `iWildCam` data on the subset (5 epochs, loss 0.11 -> 0.05), and that
+  checkpoint fed a real `linear_probe` run (0.253 OOD macro-F1 on the 8-species subset -- not
+  comparable to the full-benchmark numbers above, different class count, but a real, above-chance
+  signal, and the first successful real run of the `linear_probe` code path). Not yet done:
+  pretraining against the full 182-species benchmark (blocked until now by the batch-size issue
+  above), and the `fb_ijepa`/`hf_ijepa` checkpoint-key-mapping assumptions still haven't been
+  checked against a real official checkpoint (no checkpoint downloaded yet, no cross-backend
+  embedding diff run).
 
 See `roadmap.md` for the exact remaining steps and their current status.

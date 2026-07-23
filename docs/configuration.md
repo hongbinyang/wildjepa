@@ -166,13 +166,20 @@ root: data/iwildcam
 num_species: null
 max_images_per_species: null
 image_size: 224
-batch_size: 64
+batch_size: 32
 num_workers: 8
 ```
 
 Same fields as `iwildcam_subset`, with `num_species`/`max_images_per_species`
 set to `null` (all 182 species, no cap) — this is the split comparable to
 published WILDS numbers.
+
+`batch_size` was originally `64`; changed to `32` after measuring `64`
+produce wildly unstable MPS step times (3-137s/step, never converging) on a
+memory-constrained M2 Mac, where `32` was fast and stable — see
+[`usage.md`](usage.md#category-training) and `configs/data/iwildcam_full.yaml`'s
+own comment. Hardware with dedicated VRAM (e.g. CUDA) may handle `64` fine;
+override with `data.batch_size=64` there.
 
 Both `iwildcam_*` configs load via the real WILDS `iWildCam2020-WILDS` splits:
 

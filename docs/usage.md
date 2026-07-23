@@ -111,8 +111,16 @@ python scripts/train.py data=iwildcam_subset train.mode=pretrain \
 
 # full benchmark: all 182 species, no cap
 python scripts/train.py data=iwildcam_full train.mode=pretrain \
-    train.epochs=100 device=cuda data.batch_size=64
+    train.epochs=100 device=cuda data.batch_size=64   # bigger batch, if you have dedicated VRAM
 ```
+
+`iwildcam_full`'s default `batch_size` is `32`, not a rounder-looking `64` --
+measured directly on a memory-constrained M2 Mac, `64` produced wildly
+unstable MPS step times (3-137s/step, never converging; Apple Silicon's
+unified memory means MPS competes with every other running app for the same
+RAM), while `32` was fast and completely stable. Not necessarily a ceiling
+on hardware with dedicated VRAM (e.g. CUDA) -- see the comment in
+`configs/data/iwildcam_full.yaml`.
 
 Checkpoints land at `outputs/<run_name>/pretrain_checkpoint.pt` (Hydra's
 per-run output directory; `run_name` defaults to a timestamp, or pass

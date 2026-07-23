@@ -48,12 +48,27 @@ Status key: `[ ]` not started · `[~]` scaffolded/stubbed · `[x]` done
       device-aware backward tests (`test_vit.py`, `test_integration_tiny_pretrain.py`)
       that run on `resolve_device("auto")`'s actual result instead of assuming CPU --
       safe in any environment since a GPU-less CI runner just re-exercises `cpu`.
+- [x] Real pretrain run on the subset (5 epochs, real iWildCam data): loss 0.11 -> 0.05,
+      mechanically clean, checkpoint saved correctly.
+- [x] First linear-probe numbers on the real iWildCam subset (proof the `linear_probe`
+      pipeline works on real data, first real run of that code path): 0.253 OOD macro-F1
+      on the 8-species subset. Not comparable to the ERM baseline's full-182-species
+      number -- different class count -- but a real, above-chance signal.
+- [x] Fixed two more real bugs found chasing a "pretraining is catastrophically slow"
+      symptom on the full benchmark: (1) `MultiBlockMaskCollator` resampled block size
+      per batch, not just position, forcing MPS to recompile its graph almost every
+      step -- fixed to sample size once per collator instance (kept, but not the
+      dominant cause); (2) the actual dominant cause -- `iwildcam_full`'s default
+      `batch_size=64` exceeded this memory-constrained M2 Mac's capacity (unified
+      memory competing with other running apps). Measured `64` as wildly unstable
+      (3-137s/step) vs `32` as fast and stable; changed the default. See `design.md`
+      "Honest limitations" and `configs/data/iwildcam_full.yaml`.
 - [ ] Cross-check: load a released `facebookresearch/ijepa` checkpoint into `ScratchEncoder`,
       diff output embeddings against `fb_ijepa`/`hf_ijepa` backends on identical inputs (the
       within-scratch checkpoint round-trip test exists; the cross-backend one needs an actual
       downloaded checkpoint, which needs step above first)
-- [ ] First linear-probe numbers on the real iWildCam subset vs. ERM baseline (proof the
-      pipeline works on real data, not yet a claim about the full benchmark)
+- [ ] Pretrain against the full 182-species benchmark (blocked until now by the
+      batch-size issue above; unblocked, not yet run to completion)
 
 ## Phase 2 — Domain-adaptive pretraining at scale
 

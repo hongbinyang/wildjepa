@@ -147,18 +147,38 @@ layout -- nothing custom needed.
 python scripts/train.py data=iwildcam_subset train.mode=pretrain train.epochs=20
 
 # full benchmark, once the subset pipeline is validated
-python scripts/train.py data=iwildcam_full train.mode=pretrain train.epochs=100 \
-    device=cuda data.batch_size=64
+python scripts/train.py data=iwildcam_full train.mode=pretrain train.epochs=100
 ```
 
-Scratch backend only. Mechanically verified on real Apple Silicon MPS
-hardware (loss decreases cleanly, checkpoint/resume round-trips correctly),
-but not yet run against real iWildCam data -- this is the next real step
-after Phase 4 confirms the eval harness is trustworthy. Getting the MPS run
-working surfaced a real PyTorch/MPS bug in `Conv2d`'s backward (see
-`design.md`, "Honest limitations" and `models/scratch/patch_embed.py`) that
-had silently never been exercised before, since the test suite only ever ran
-this path on CPU.
+Scratch backend only. Real run completed on the subset (5 epochs, real
+iWildCam data): loss dropped cleanly (0.11 -> 0.05), and the resulting
+checkpoint fed into a real `linear_probe` run successfully (0.253 OOD
+macro-F1 on the 8-species subset -- not comparable to the full-benchmark
+numbers elsewhere in this doc, different class count, but a real,
+above-chance signal). Full benchmark: not yet completed successfully.
+
+Two real problems surfaced getting this far, both fixed:
+
+1. A PyTorch/MPS bug in `Conv2d`'s backward (see `design.md`, "Honest
+   limitations" and `models/scratch/patch_embed.py`) that had silently
+   never been exercised before, since the test suite only ever ran this
+   path on CPU.
+2. `MultiBlockMaskCollator` resampled block *size* on every batch, not just
+   position, meaning nearly every training step had a different tensor
+   shape -- expensive on MPS, which recompiles its graph per shape. Fixed
+   to sample size once per collator instance. Real, worth keeping, but
+   turned out **not** to be the dominant cause of a subsequent "training is
+   catastrophically slow" investigation.
+3. The actual dominant cause: `iwildcam_full`'s `batch_size=64` default
+   exceeded what a memory-constrained M2 Mac (16GB RAM, ~9GB already in
+   swap from other running apps) could handle -- Apple Silicon's unified
+   memory means MPS competes with every other running app for the same
+   RAM. Measured directly: `64` produced wildly unstable step times
+   (3-137s/step, never converging); `32` was fast and completely stable
+   from the first step. Default changed to `32` -- see
+   `configs/data/iwildcam_full.yaml`'s comment and
+   [`usage.md`](usage.md#category-training). Not necessarily a limit on
+   hardware with dedicated VRAM.
 
 ## Phase 6: Cross-backend correctness check
 
