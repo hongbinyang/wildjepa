@@ -104,12 +104,16 @@ where that matters.
   back up in a new session): `scripts/train_erm_baseline.py` and
   `scripts/train.py train.mode=pretrain` both support this. Each checkpoints
   model + optimizer + epoch index every `train.checkpoint_every_epochs`
-  epochs; resume with `train.resume_from=<output_dir>/checkpoints/<...>_latest.pt`
-  (`erm_baseline_latest.pt` or `pretrain_latest.pt`). Training continues at
-  the epoch *after* the one recorded in the checkpoint -- it does not redo
-  completed epochs, and for `pretrain` the EMA momentum schedule (which
-  depends on absolute step count, not just epoch) picks up correctly too.
-  Full walkthrough: `usage.md#pausing-and-resuming-a-run`.
+  epochs. Resume with `train.auto_resume=true` -- reuse the same `run_name`,
+  no checkpoint path needed, it's found automatically -- or with
+  `train.resume_from=<output_dir>/checkpoints/<...>_latest.pt` for an
+  explicit path (needed to resume from a specific non-latest checkpoint).
+  `auto_resume` defaults to `false` deliberately: reusing a `run_name` must
+  never *silently* resume, e.g. from a typo'd name that happens to collide
+  with an old run. Training continues at the epoch *after* the one recorded
+  in the checkpoint -- it does not redo completed epochs, and for `pretrain`
+  the EMA momentum schedule (which depends on absolute step count, not just
+  epoch) picks up correctly too. Full walkthrough: `usage.md#pausing-and-resuming-a-run`.
 - `scripts/train.py`'s `finetune` mode does **not** yet support this -- it
   only saves a final checkpoint at the very end of the run, so a killed
   fine-tuning run currently loses all progress. Worth the same treatment
@@ -126,6 +130,15 @@ Every training command writes loss curves, per-split macro-F1/accuracy, and
 per-species F1 (for `id_test`/`test`) to `outputs/<run_name>/tensorboard/` as
 it runs -- open the dashboard while a run is still going, not just after.
 Full reference: `usage.md#category-monitoring`.
+
+Verified directly (not just assumed): pointing `--logdir` at `outputs/`
+(not a single run's subdirectory) lists every `run_name` as its own
+checkbox in the left-hand "Runs" panel -- toggle any subset on/off, and the
+charts overlay only the selected runs' full histories (every logged epoch,
+i.e. everything corresponding to a saved checkpoint), color-coded per run
+with a legend table showing each run's current value at the selected step.
+This is native TensorBoard behavior given the `outputs/<run_name>/tensorboard/`
+layout -- nothing custom needed.
 
 ## Phase 5: Self-supervised pretraining
 

@@ -130,6 +130,7 @@ and [`configuration.md#backend`](configuration.md#backend)):
 | `train.log_every` | Steps between loss log lines. |
 | `train.checkpoint_every_epochs` | Save a resumable checkpoint every N epochs (default 1). |
 | `train.resume_from` | Path to a `checkpoints/pretrain_*.pt` to resume from — see [Pausing and resuming a run](#pausing-and-resuming-a-run) below (same mechanism as the ERM baseline). |
+| `train.auto_resume` | If `true` and `resume_from` is unset, auto-resume from `outputs/<run_name>/checkpoints/pretrain_latest.pt` if it exists — no path needed, just reuse the same `run_name`. |
 | `backend.encoder.*` | ViT architecture (depth, embed_dim, num_heads, patch_size). |
 | `backend.masking.*` | Multi-block masking geometry (target/context scale, aspect ratio, num target blocks). |
 | `backend.ema.*` | Target-encoder EMA momentum schedule. |
@@ -191,6 +192,7 @@ python scripts/train_erm_baseline.py data=iwildcam_subset train.epochs=3
 | `train.log_every` | `50` | Steps between loss log lines. |
 | `train.checkpoint_every_epochs` | `1` | Save a resumable checkpoint after every N epochs. |
 | `train.resume_from` | `null` | Path to a `checkpoints/erm_baseline_*.pt` to resume from. |
+| `train.auto_resume` | `false` | If `true` and `resume_from` is unset, auto-resume from `outputs/<run_name>/checkpoints/erm_baseline_latest.pt` if it exists. |
 
 This script uses its own top-level Hydra config
 (`configs/erm_baseline_config.yaml`) since it has no `backend` group — see
@@ -211,23 +213,32 @@ stable across resumes (see [Category: Run management](#category-run-management))
   running process `SIGSTOP`, then `SIGCONT` when ready to continue — no code
   support needed, this is a plain OS-level freeze.
 - **Full stop and resume later** (process killed, machine rebooted, etc.): re-run
-  with the same `run_name` and `train.resume_from` pointing at the last
-  checkpoint. Training picks up at the epoch *after* the one recorded in the
-  checkpoint — it does not re-run completed epochs. For `pretrain`, the EMA
-  momentum schedule (a function of absolute step, not just epoch) is
-  recomputed correctly on resume too.
+  with the same `run_name`, either with `train.auto_resume=true` (just reuse
+  `run_name`, no path needed) or `train.resume_from` pointing at the last
+  checkpoint explicitly. Training picks up at the epoch *after* the one
+  recorded in the checkpoint — it does not re-run completed epochs. For
+  `pretrain`, the EMA momentum schedule (a function of absolute step, not
+  just epoch) is recomputed correctly on resume too.
 
 ```bash
 # ERM baseline: named run, killed partway through (Ctrl-C or `kill`)
 python scripts/train_erm_baseline.py run_name=erm-baseline-v1
-python scripts/train_erm_baseline.py run_name=erm-baseline-v1 \
-    train.resume_from=outputs/erm-baseline-v1/checkpoints/erm_baseline_latest.pt
+
+# resume it -- just reuse run_name, no checkpoint path needed
+python scripts/train_erm_baseline.py run_name=erm-baseline-v1 train.auto_resume=true
 
 # I-JEPA pretraining: same pattern, different checkpoint prefix
 python scripts/train.py data=iwildcam_subset train.mode=pretrain run_name=ijepa-v1
-python scripts/train.py data=iwildcam_subset train.mode=pretrain run_name=ijepa-v1 \
-    train.resume_from=outputs/ijepa-v1/checkpoints/pretrain_latest.pt
+python scripts/train.py data=iwildcam_subset train.mode=pretrain run_name=ijepa-v1 train.auto_resume=true
 ```
+
+`auto_resume` defaults to `false` deliberately: reusing a `run_name` must
+never *silently* resume. If you typo a name, or forget a `run_name` was
+already used for something else, `auto_resume=false` (the default) starts
+fresh and overwrites rather than silently continuing training on unrelated
+old weights. `resume_from` (an explicit path) still works too, and is the
+only way to resume from a specific non-latest checkpoint, e.g.
+`checkpoints/pretrain_epoch7.pt` instead of `pretrain_latest.pt`.
 
 ---
 

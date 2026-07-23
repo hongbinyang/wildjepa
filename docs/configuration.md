@@ -220,6 +220,7 @@ eval_every: 1
 log_every: 20
 checkpoint_every_epochs: 1
 resume_from: null
+auto_resume: false
 ```
 
 | Field | Default | Meaning |
@@ -231,7 +232,8 @@ resume_from: null
 | `eval_every` | `1` | Epochs between full-split evaluation passes (`finetune`). |
 | `log_every` | `20` | Steps between loss log lines (`pretrain`). |
 | `checkpoint_every_epochs` | `1` | `pretrain` only: save a resumable checkpoint to `<output_dir>/checkpoints/pretrain_epoch<N>.pt` (and update `pretrain_latest.pt`) every N epochs. |
-| `resume_from` | `null` | `pretrain` only: path to a checkpoint to resume from — see [`usage.md`](usage.md#pausing-and-resuming-a-run). |
+| `resume_from` | `null` | `pretrain` only: explicit path to a checkpoint to resume from — see [`usage.md`](usage.md#pausing-and-resuming-a-run). |
+| `auto_resume` | `false` | `pretrain` only: if `true` and `resume_from` is unset, auto-resume from `pretrain_latest.pt` under this run's `output_dir` if it exists — reuse `run_name`, no path needed. Defaults to `false` so reusing a `run_name` never *silently* resumes. |
 
 ### `train=erm_baseline` (default for `scripts/train_erm_baseline.py`)
 
@@ -245,6 +247,7 @@ eval_every: 1
 log_every: 50
 checkpoint_every_epochs: 1
 resume_from: null
+auto_resume: false
 ```
 
 | Field | Default | Meaning |
@@ -256,7 +259,8 @@ resume_from: null
 | `eval_every` | `1` | Epochs between full-split evaluation passes. |
 | `log_every` | `50` | Steps between loss log lines. |
 | `checkpoint_every_epochs` | `1` | Save model + optimizer + epoch index to `<output_dir>/checkpoints/erm_baseline_epoch<N>.pt` (and update `erm_baseline_latest.pt`) every N epochs. |
-| `resume_from` | `null` | Path to a checkpoint to resume from. Training continues at the epoch after the one recorded in the checkpoint — see [`usage.md`](usage.md#pausing-and-resuming-a-run). |
+| `resume_from` | `null` | Explicit path to a checkpoint to resume from. Training continues at the epoch after the one recorded in the checkpoint — see [`usage.md`](usage.md#pausing-and-resuming-a-run). |
+| `auto_resume` | `false` | If `true` and `resume_from` is unset, auto-resume from `erm_baseline_latest.pt` under this run's `output_dir` if it exists — reuse `run_name`, no path needed. Defaults to `false` so reusing a `run_name` never *silently* resumes (e.g. a typo'd name accidentally matching an old run). |
 
 Changing `epochs`/`lr`/`weight_decay` away from the WILDS defaults is fine for
 a quick smoke test (e.g. `train.epochs=1`), but the result is then no longer a
