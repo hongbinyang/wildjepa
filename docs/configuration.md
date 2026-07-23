@@ -33,10 +33,12 @@ Fields present in both:
 |---|---|---|
 | `seed` | `42` | Global RNG seed. |
 | `run_name` | `${now:%Y-%m-%d}_${now:%H-%M-%S}` | The run's identity *and* its directory name — override with `run_name=my-run` for a stable, resumable name instead of a timestamp. See [`lifecycle.md`](lifecycle.md#run-identity-what-identifies-a-run-today). |
-| `output_dir` | `outputs/${run_name}` | Per-run directory, derived from `run_name`; checkpoints and logs land here. Not usually overridden directly — set `run_name` instead. |
+| `output_dir` | `outputs/${run_name}` | Per-run directory, derived from `run_name`; checkpoints, Hydra logs, and TensorBoard metrics (`<output_dir>/tensorboard/`) all land here. Not usually overridden directly — set `run_name` instead. |
 
 See [`usage.md#category-run-management`](usage.md#category-run-management) for
-`scripts/manage_runs.py` (listing and deleting run directories).
+`scripts/manage_runs.py` (listing and deleting run directories), and
+[`usage.md#category-monitoring`](usage.md#category-monitoring) for the
+TensorBoard dashboard.
 
 ---
 

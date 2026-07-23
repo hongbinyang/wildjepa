@@ -23,5 +23,6 @@ dependencies:
       - omegaconf>=2.3
       - transformers>=4.41       # for the hf_ijepa backend
       - timm>=1.0                # ViT building blocks / reference layers
-      - wandb                    # optional experiment tracking, not required to run
+      - tensorboard              # local training dashboards -- see docs/usage.md "Category: Monitoring"
+      - wandb                    # optional, unwired -- TensorBoard is this project's actual tracking (see MetricsLogger)
       - wilds                    # WILDS benchmark datasets (iWildCam2020-WILDS)

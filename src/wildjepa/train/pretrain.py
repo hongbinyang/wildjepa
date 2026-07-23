@@ -14,7 +14,7 @@ from wildjepa.data import build_dataset, make_pretrain_collate_fn
 from wildjepa.models.scratch import IJEPA
 from wildjepa.models.scratch.ema import momentum_schedule
 from wildjepa.models.scratch.masking import MaskingConfig
-from wildjepa.train.common import AverageMeter, save_pretrain_checkpoint
+from wildjepa.train.common import AverageMeter, MetricsLogger, save_pretrain_checkpoint
 from wildjepa.utils.seed import set_seed
 
 logger = logging.getLogger(__name__)
@@ -63,6 +63,7 @@ def run_pretraining(cfg: DictConfig, device: torch.device) -> IJEPA:
     total_steps = cfg.train.epochs * len(loader)
     momentum_start = cfg.backend.ema.momentum_start
     momentum_end = cfg.backend.ema.momentum_end
+    metrics_logger = MetricsLogger(cfg.output_dir)
 
     step = 0
     for epoch in range(cfg.train.epochs):
@@ -83,6 +84,8 @@ def run_pretraining(cfg: DictConfig, device: torch.device) -> IJEPA:
 
             meter.update(loss.item(), images.size(0))
             step += 1
+            metrics_logger.log_scalar("train/loss_step", loss.item(), step)
+            metrics_logger.log_scalar("train/ema_momentum", momentum, step)
             if step % cfg.train.log_every == 0:
                 logger.info(
                     "epoch %d/%d step %d/%d loss %.4f (avg %.4f) momentum %.5f",
@@ -96,9 +99,11 @@ def run_pretraining(cfg: DictConfig, device: torch.device) -> IJEPA:
                 )
 
         logger.info("epoch %d/%d done, avg loss %.4f", epoch + 1, cfg.train.epochs, meter.avg)
+        metrics_logger.log_scalar("train/loss_epoch", meter.avg, epoch + 1)
 
     checkpoint_path = f"{cfg.output_dir}/pretrain_checkpoint.pt"
     save_pretrain_checkpoint(model, checkpoint_path)
     logger.info("Saved pretraining checkpoint to %s", checkpoint_path)
+    metrics_logger.close()
 
     return model

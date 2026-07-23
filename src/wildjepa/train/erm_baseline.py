@@ -21,14 +21,22 @@ from omegaconf import DictConfig
 from torch.utils.data import DataLoader
 
 from wildjepa.data import build_dataset, make_supervised_collate_fn
-from wildjepa.eval.metrics import accuracy, macro_f1
+from wildjepa.eval.metrics import accuracy, macro_f1, per_class_f1
 from wildjepa.train.common import (
     AverageMeter,
+    MetricsLogger,
     load_training_checkpoint,
     save_training_checkpoint,
 )
 
 logger = logging.getLogger(__name__)
+
+# Per-class F1 is logged to TensorBoard (not the console -- 182 lines per
+# split per epoch would drown out everything else) for exactly the two
+# splits actually compared against PUBLISHED_BASELINES, since the aggregate
+# macro-F1 number alone hides whether rare species specifically are doing
+# poorly -- the whole motivation for this project (see docs/design.md).
+_PER_CLASS_LOGGED_SPLITS = ("id_test", "test")
 
 
 def _build_resnet50(num_classes: int) -> nn.Module:
@@ -38,7 +46,7 @@ def _build_resnet50(num_classes: int) -> nn.Module:
 
 
 @torch.no_grad()
-def _evaluate(model: nn.Module, loader: DataLoader, device: torch.device) -> dict[str, float]:
+def _evaluate(model: nn.Module, loader: DataLoader, device: torch.device) -> dict:
     model.eval()
     all_preds, all_labels = [], []
     for images, labels in loader:
@@ -48,7 +56,11 @@ def _evaluate(model: nn.Module, loader: DataLoader, device: torch.device) -> dic
         all_labels.append(labels)
     preds = torch.cat(all_preds).numpy()
     labels_np = torch.cat(all_labels).numpy()
-    return {"macro_f1": macro_f1(labels_np, preds), "accuracy": accuracy(labels_np, preds)}
+    return {
+        "macro_f1": macro_f1(labels_np, preds),
+        "accuracy": accuracy(labels_np, preds),
+        "per_class_f1": per_class_f1(labels_np, preds),
+    }
 
 
 def run_erm_baseline(cfg: DictConfig, device: torch.device) -> dict[str, float]:
@@ -73,6 +85,7 @@ def run_erm_baseline(cfg: DictConfig, device: torch.device) -> dict[str, float]:
     checkpoint_dir = Path(cfg.output_dir) / "checkpoints"
     latest_checkpoint = checkpoint_dir / "erm_baseline_latest.pt"
     checkpoint_every = cfg.train.get("checkpoint_every_epochs", 1)
+    metrics_logger = MetricsLogger(cfg.output_dir)
 
     start_epoch = 0
     resume_from = cfg.train.get("resume_from", None)
@@ -84,6 +97,7 @@ def run_erm_baseline(cfg: DictConfig, device: torch.device) -> dict[str, float]:
         logger.info("Resumed from %s: completed epoch %d, continuing at epoch %d", resume_from, state["epoch"] + 1, start_epoch + 1)
 
     train_loader = loaders["train"]
+    global_step = start_epoch * len(train_loader)
     for epoch in range(start_epoch, cfg.train.epochs):
         model.train()
         meter = AverageMeter()
@@ -97,10 +111,13 @@ def run_erm_baseline(cfg: DictConfig, device: torch.device) -> dict[str, float]:
             optimizer.step()
 
             meter.update(loss.item(), images.size(0))
+            global_step += 1
+            metrics_logger.log_scalar("train/loss_step", loss.item(), global_step)
             if (step + 1) % cfg.train.log_every == 0:
                 logger.info("epoch %d step %d/%d loss %.4f", epoch + 1, step + 1, len(train_loader), meter.avg)
 
         logger.info("erm_baseline epoch %d/%d avg loss %.4f", epoch + 1, cfg.train.epochs, meter.avg)
+        metrics_logger.log_scalar("train/loss_epoch", meter.avg, epoch + 1)
 
         if (epoch + 1) % checkpoint_every == 0:
             epoch_checkpoint = checkpoint_dir / f"erm_baseline_epoch{epoch + 1}.pt"
@@ -114,6 +131,10 @@ def run_erm_baseline(cfg: DictConfig, device: torch.device) -> dict[str, float]:
                     continue
                 metrics = _evaluate(model, loader, device)
                 logger.info("  [%s] macro_f1=%.4f accuracy=%.4f", split, metrics["macro_f1"], metrics["accuracy"])
+                metrics_logger.log_scalar(f"{split}/macro_f1", metrics["macro_f1"], epoch + 1)
+                metrics_logger.log_scalar(f"{split}/accuracy", metrics["accuracy"], epoch + 1)
+                if split in _PER_CLASS_LOGGED_SPLITS:
+                    metrics_logger.log_per_class(f"{split}/per_class_f1", metrics["per_class_f1"], epoch + 1)
 
     results: dict[str, float] = {}
     for split, loader in loaders.items():
@@ -123,4 +144,5 @@ def run_erm_baseline(cfg: DictConfig, device: torch.device) -> dict[str, float]:
         results[f"{split}_macro_f1"] = metrics["macro_f1"]
         results[f"{split}_accuracy"] = metrics["accuracy"]
 
+    metrics_logger.close()
     return results

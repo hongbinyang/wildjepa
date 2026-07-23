@@ -114,6 +114,17 @@ where that matters.
   treatment as the ERM baseline once real pretraining runs get long enough
   for it to matter (Phase 5 below).
 
+### Monitoring a run in progress
+
+```bash
+tensorboard --logdir outputs/
+```
+
+Every training command writes loss curves, per-split macro-F1/accuracy, and
+per-species F1 (for `id_test`/`test`) to `outputs/<run_name>/tensorboard/` as
+it runs -- open the dashboard while a run is still going, not just after.
+Full reference: `usage.md#category-monitoring`.
+
 ## Phase 5: Self-supervised pretraining
 
 ```bash
@@ -167,10 +178,12 @@ Compares macro-F1 (ID and OOD) against both the published ERM baseline and
 Once more than one pretraining run exists (different hyperparameters,
 different backbone sizes, masking ratios, etc.), name each one
 (`run_name=vit-s-mask015`, `run_name=vit-s-mask020`, ...) so comparing them
-means comparing named directories, not timestamps. `roadmap.md` Phase 4
-("Ablations... comparison table") is this phase at full scale, and remains
-the natural point to revisit whether a real config-comparing registry (not
-just names) is worth building -- see
+means comparing named directories, not timestamps -- and so
+`tensorboard --logdir outputs/` (Phase 4) shows them side by side
+automatically, curves and per-species F1 included, not just the final
+number. `roadmap.md` Phase 4 ("Ablations... comparison table") is this phase
+at full scale, and remains the natural point to revisit whether a real
+config-comparing registry (not just names) is worth building -- see
 [Run identity](#run-identity-what-identifies-a-run-today).
 
 ## Phase 9: List existing runs

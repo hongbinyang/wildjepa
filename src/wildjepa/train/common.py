@@ -1,4 +1,5 @@
-"""Shared training utilities: checkpointing and a running-average meter."""
+"""Shared training utilities: checkpointing, a running-average meter, and
+TensorBoard metrics logging."""
 
 from __future__ import annotations
 
@@ -63,3 +64,39 @@ def save_training_checkpoint(path: str | Path, epoch: int, model, optimizer) -> 
 
 def load_training_checkpoint(path: str | Path, map_location: str = "cpu") -> dict:
     return torch.load(Path(path), map_location=map_location, weights_only=True)
+
+
+class MetricsLogger:
+    """Thin wrapper around torch.utils.tensorboard.SummaryWriter.
+
+    Writes to <output_dir>/tensorboard/, so a run's directory (identified by
+    run_name, see docs/lifecycle.md "Run identity") holds its metrics
+    alongside its checkpoints, and `tensorboard --logdir outputs/` picks up
+    every run_name automatically for side-by-side comparison -- no separate
+    tracking service or account needed, unlike e.g. Weights & Biases (listed
+    as an optional, unwired dependency in environment.yml).
+
+    Import of SummaryWriter is deferred into __init__ so importing this
+    module doesn't require the tensorboard package unless a logger is
+    actually constructed.
+    """
+
+    def __init__(self, output_dir: str | Path) -> None:
+        from torch.utils.tensorboard import SummaryWriter
+
+        self._writer = SummaryWriter(log_dir=str(Path(output_dir) / "tensorboard"))
+
+    def log_scalar(self, tag: str, value: float, step: int) -> None:
+        self._writer.add_scalar(tag, value, step)
+
+    def log_per_class(self, tag_prefix: str, per_class: dict[int, float], step: int) -> None:
+        """Logs one scalar per class under f"{tag_prefix}/class_<id>" --
+        TensorBoard's own UI groups these back into one comparable chart.
+        Not printed to the console logs (182 lines per split per epoch would
+        drown everything else out); this is specifically the rare-species
+        visibility the console-only macro-F1 number doesn't give you."""
+        for class_id, value in per_class.items():
+            self._writer.add_scalar(f"{tag_prefix}/class_{class_id}", value, step)
+
+    def close(self) -> None:
+        self._writer.close()

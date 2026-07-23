@@ -262,6 +262,47 @@ operates directly on the filesystem, not on any particular run's config.
 
 ---
 
+## Category: Monitoring
+
+Every training command — `scripts/train.py` (`pretrain` / `linear_probe` /
+`finetune`) and `scripts/train_erm_baseline.py` — writes
+[TensorBoard](https://www.tensorflow.org/tensorboard) scalars to
+`outputs/<run_name>/tensorboard/`, alongside that run's checkpoints. No
+account, no external service, nothing leaves your machine.
+
+```bash
+tensorboard --logdir outputs/
+# open http://localhost:6006
+```
+
+Because every run's event file lives under its own `run_name` directory,
+pointing `--logdir` at `outputs/` (not one run's subdirectory) shows every
+run side by side automatically — the comparison story from
+[`lifecycle.md`](lifecycle.md#phase-8-iterate--compare) for free, no extra
+tooling.
+
+| Logged | Where | Notes |
+|---|---|---|
+| `train/loss_step` | every mode | Per-optimizer-step loss. |
+| `train/loss_epoch` | every mode except `linear_probe` | Per-epoch average loss. |
+| `train/ema_momentum` | `pretrain` only | The EMA target-encoder momentum schedule. |
+| `<split>/macro_f1`, `<split>/accuracy` | `erm_baseline`, `finetune`, `linear_probe` | Per non-train split (`id_val`, `id_test`, `val`, `test`), per eval pass. |
+| `<split>/per_class_f1/class_<id>` | `erm_baseline`, `finetune`, `linear_probe`; `id_test` and `test` splits only | Per-species F1 — the rare-species visibility a single aggregate macro-F1 number hides, and the actual thing this project cares about (see `design.md`). Not printed to the console logs; 182 lines per split per epoch would drown out everything else. |
+
+`linear_probe` is a one-shot `sklearn` fit, not an epoch loop, so its
+scalars land at step 0 rather than a curve — still comparable across runs,
+just a single point instead of a line.
+
+**Why TensorBoard and not Weights & Biases:** `wandb` is listed in
+`environment.yml` as an optional dependency but is intentionally not wired
+into any training code. It needs an account and sends run data to an
+external service by default; TensorBoard needs neither and is the
+established default for local, single-machine PyTorch work, which is what
+this project is right now. Revisit if/when this project needs team-shared
+dashboards or hosted run comparison that local TensorBoard can't give you.
+
+---
+
 ## Category: Evaluation
 
 ### `scripts/evaluate.py` — evaluate an existing checkpoint

@@ -12,11 +12,15 @@ from omegaconf import DictConfig
 from torch.utils.data import DataLoader
 
 from wildjepa.data import build_dataset, make_supervised_collate_fn
-from wildjepa.eval.metrics import accuracy, macro_f1
+from wildjepa.eval.metrics import accuracy, macro_f1, per_class_f1
 from wildjepa.models.base import JEPAEncoder
-from wildjepa.train.common import AverageMeter
+from wildjepa.train.common import AverageMeter, MetricsLogger
 
 logger = logging.getLogger(__name__)
+
+# See erm_baseline.py for why only these two splits get per-class logging:
+# they're the ones actually compared against PUBLISHED_BASELINES.
+_PER_CLASS_LOGGED_SPLITS = ("id_test", "test")
 
 
 class EncoderWithHead(nn.Module):
@@ -32,7 +36,7 @@ class EncoderWithHead(nn.Module):
 
 
 @torch.no_grad()
-def _evaluate(model: EncoderWithHead, loader: DataLoader, device: torch.device) -> dict[str, float]:
+def _evaluate(model: EncoderWithHead, loader: DataLoader, device: torch.device) -> dict:
     model.eval()
     all_preds, all_labels = [], []
     for images, labels in loader:
@@ -42,7 +46,11 @@ def _evaluate(model: EncoderWithHead, loader: DataLoader, device: torch.device) 
         all_labels.append(labels)
     preds = torch.cat(all_preds).numpy()
     labels_np = torch.cat(all_labels).numpy()
-    return {"macro_f1": macro_f1(labels_np, preds), "accuracy": accuracy(labels_np, preds)}
+    return {
+        "macro_f1": macro_f1(labels_np, preds),
+        "accuracy": accuracy(labels_np, preds),
+        "per_class_f1": per_class_f1(labels_np, preds),
+    }
 
 
 def run_finetune(cfg: DictConfig, device: torch.device, encoder: JEPAEncoder) -> dict[str, float]:
@@ -63,8 +71,10 @@ def run_finetune(cfg: DictConfig, device: torch.device, encoder: JEPAEncoder) ->
     model = EncoderWithHead(encoder, bundle.num_classes).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.train.lr, weight_decay=cfg.train.weight_decay)
     criterion = nn.CrossEntropyLoss()
+    metrics_logger = MetricsLogger(cfg.output_dir)
 
     train_loader = loaders["train"]
+    global_step = 0
     for epoch in range(cfg.train.epochs):
         model.train()
         meter = AverageMeter()
@@ -78,8 +88,11 @@ def run_finetune(cfg: DictConfig, device: torch.device, encoder: JEPAEncoder) ->
             optimizer.step()
 
             meter.update(loss.item(), images.size(0))
+            global_step += 1
+            metrics_logger.log_scalar("train/loss_step", loss.item(), global_step)
 
         logger.info("finetune epoch %d/%d avg loss %.4f", epoch + 1, cfg.train.epochs, meter.avg)
+        metrics_logger.log_scalar("train/loss_epoch", meter.avg, epoch + 1)
 
         if (epoch + 1) % cfg.train.eval_every == 0:
             for split, loader in loaders.items():
@@ -87,6 +100,10 @@ def run_finetune(cfg: DictConfig, device: torch.device, encoder: JEPAEncoder) ->
                     continue
                 metrics = _evaluate(model, loader, device)
                 logger.info("  [%s] macro_f1=%.4f accuracy=%.4f", split, metrics["macro_f1"], metrics["accuracy"])
+                metrics_logger.log_scalar(f"{split}/macro_f1", metrics["macro_f1"], epoch + 1)
+                metrics_logger.log_scalar(f"{split}/accuracy", metrics["accuracy"], epoch + 1)
+                if split in _PER_CLASS_LOGGED_SPLITS:
+                    metrics_logger.log_per_class(f"{split}/per_class_f1", metrics["per_class_f1"], epoch + 1)
 
     results: dict[str, float] = {}
     for split, loader in loaders.items():
@@ -96,4 +113,5 @@ def run_finetune(cfg: DictConfig, device: torch.device, encoder: JEPAEncoder) ->
         results[f"{split}_macro_f1"] = metrics["macro_f1"]
         results[f"{split}_accuracy"] = metrics["accuracy"]
 
+    metrics_logger.close()
     return results
