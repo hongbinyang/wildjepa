@@ -4,6 +4,7 @@ import torch
 from wildjepa.models.scratch.patch_embed import PatchEmbed
 from wildjepa.models.scratch.pos_embed import get_2d_sincos_pos_embed
 from wildjepa.models.scratch.vit import VisionTransformer
+from wildjepa.utils.device import resolve_device
 
 
 def test_pos_embed_shape():
@@ -27,6 +28,27 @@ def test_patch_embed_rejects_wrong_size():
     pe = PatchEmbed(img_size=64, patch_size=16, in_chans=3, embed_dim=32)
     with pytest.raises(ValueError):
         pe(torch.randn(2, 3, 32, 32))
+
+
+def test_patch_embed_backward_on_resolved_device():
+    """Every other test in this file only checks forward shapes on CPU --
+    none call .backward(), and none use a non-CPU device. That combination
+    is exactly how a real PyTorch/MPS bug (Conv2d's backward breaking
+    whenever its output feeds a further op after a transpose -- precisely
+    what PatchEmbed.forward's callers always do next) went undetected until
+    pretraining was run on real Apple Silicon hardware for the first time --
+    see docs/design.md "Honest limitations". Uses resolve_device("auto")
+    rather than hardcoding mps/cuda, so this is safe to run anywhere: a
+    GPU-less CI runner just re-exercises cpu here, harmlessly."""
+    device = resolve_device("auto")
+    pe = PatchEmbed(img_size=64, patch_size=16, in_chans=3, embed_dim=32).to(device)
+    x = torch.randn(2, 3, 64, 64, device=device, requires_grad=True)
+
+    out = pe(x)
+    out.sum().backward()  # raised RuntimeError on MPS before the fix
+
+    assert x.grad is not None
+    assert torch.isfinite(x.grad).all()
 
 
 def _tiny_vit():
@@ -66,3 +88,22 @@ def test_forward_full_is_deterministic_in_eval_mode():
         out1 = vit.forward_full(x)
         out2 = vit.forward_full(x)
     assert torch.equal(out1, out2)
+
+
+def test_forward_masked_backward_on_resolved_device():
+    """Same rationale as test_patch_embed_backward_on_resolved_device --
+    exercises the full masking -> attention chain's backward on this
+    machine's actual resolved device, not just patch embedding alone."""
+    device = resolve_device("auto")
+    vit = _tiny_vit().to(device)
+    x = torch.randn(3, 3, 64, 64, device=device, requires_grad=True)
+    mask = torch.zeros(3, 16, dtype=torch.bool, device=device)
+    mask[0, :10] = True
+    mask[1, :5] = True
+    mask[2, :10] = True
+
+    tokens, _idx, _pad_mask = vit.forward_masked(x, mask)
+    tokens.sum().backward()
+
+    assert x.grad is not None
+    assert torch.isfinite(x.grad).all()

@@ -130,17 +130,27 @@ def gather_with_padding(x: torch.Tensor, mask: torch.Tensor) -> tuple[torch.Tens
              (padding slots get index 0 -- harmless since they're masked out
              in attention via `pad_mask`)
         pad_mask: (B, K_max) bool, True = this slot is padding (ignore)
+
+    Fully vectorized (a stable sort + torch.gather), no Python loop over the
+    batch with in-place slice assignment -- that pattern (`gathered[i, :k] =
+    x[i, pos]`) triggers a real MPS-backend autograd bug (`view size is not
+    compatible with input tensor's size and stride`) on `loss.backward()`;
+    this form only uses ops with correct MPS backward support.
     """
-    B, _, D = x.shape
+    B, N, D = x.shape
     counts = mask.sum(dim=1)
     k_max = int(counts.max().item())
-    gathered = x.new_zeros(B, k_max, D)
-    idx = torch.zeros(B, k_max, dtype=torch.long, device=x.device)
-    pad_mask = torch.ones(B, k_max, dtype=torch.bool, device=x.device)
-    for i in range(B):
-        pos = torch.nonzero(mask[i], as_tuple=True)[0]
-        k = pos.numel()
-        gathered[i, :k] = x[i, pos]
-        idx[i, :k] = pos
-        pad_mask[i, :k] = False
+
+    # Stable sort puts True (kept) positions first within each row, in their
+    # original relative order -- exactly the gather order the old for-loop
+    # produced, without needing to build it index-by-index.
+    sort_idx = torch.argsort((~mask).long(), dim=1, stable=True)
+    patch_idx = sort_idx[:, :k_max]  # (B, K_max)
+
+    pad_mask = torch.arange(k_max, device=x.device)[None, :] >= counts[:, None]
+    idx = patch_idx.masked_fill(pad_mask, 0)
+
+    gathered = torch.gather(x, dim=1, index=patch_idx.unsqueeze(-1).expand(-1, -1, D))
+    gathered = gathered.masked_fill(pad_mask.unsqueeze(-1), 0.0)
+
     return gathered, idx, pad_mask

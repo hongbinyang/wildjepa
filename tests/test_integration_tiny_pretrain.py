@@ -1,9 +1,14 @@
 """End-to-end integration test: a tiny IJEPA trained for a few dozen steps on
-the synthetic dataset should produce a finite, decreasing loss. This is the
-strongest correctness signal available without a GPU or the real (large)
-iWildCam download -- it exercises masking -> context encoding -> target
-encoding -> prediction -> loss -> backward -> EMA update as one path, on
-data small enough to genuinely overfit in seconds.
+the synthetic dataset should produce a finite, decreasing loss -- without the
+real (large) iWildCam download. Exercises masking -> context encoding ->
+target encoding -> prediction -> loss -> backward -> EMA update as one path,
+on data small enough to genuinely overfit in seconds. Run twice: once
+explicitly on CPU, once on whatever device this machine's own
+resolve_device("auto") picks (mps on Apple Silicon, cuda if available, cpu
+otherwise) -- the device-aware variant is what should have caught (and now
+would catch) a real PyTorch/MPS backward bug that slipped past this suite
+until pretraining was run manually on real hardware for the first time; see
+docs/design.md "Honest limitations".
 
 This does NOT prove the full-scale pipeline gets good iWildCam macro-F1 --
 only that the training loop is mechanically correct. See docs/roadmap.md for
@@ -21,6 +26,7 @@ from wildjepa.data.synthetic import SyntheticCameraTrapDataset
 from wildjepa.models.scratch import IJEPA
 from wildjepa.models.scratch.ema import momentum_schedule
 from wildjepa.models.scratch.masking import MaskingConfig
+from wildjepa.utils.device import resolve_device
 
 
 def _tiny_backend_cfg():
@@ -48,7 +54,7 @@ def _tiny_backend_cfg():
     )
 
 
-def test_tiny_pretrain_loss_decreases_and_stays_finite():
+def _train_tiny_ijepa(device: torch.device, total_steps: int = 40) -> list[float]:
     torch.manual_seed(0)
     cfg = _tiny_backend_cfg()
 
@@ -64,10 +70,9 @@ def test_tiny_pretrain_loss_decreases_and_stays_finite():
     collate_fn = make_pretrain_collate_fn(masking_cfg)
     loader = DataLoader(dataset, batch_size=8, shuffle=True, collate_fn=collate_fn, drop_last=True)
 
-    model = IJEPA(cfg)
+    model = IJEPA(cfg).to(device)
     optimizer = torch.optim.AdamW(model.trainable_parameters(), lr=5e-3)
 
-    total_steps = 40
     losses: list[float] = []
     step = 0
     while step < total_steps:
@@ -75,7 +80,11 @@ def test_tiny_pretrain_loss_decreases_and_stays_finite():
             if step >= total_steps:
                 break
 
-            loss = model(batch["images"], batch["context_mask"], batch["target_masks"])
+            images = batch["images"].to(device)
+            context_mask = batch["context_mask"].to(device)
+            target_masks = [m.to(device) for m in batch["target_masks"]]
+
+            loss = model(images, context_mask, target_masks)
             assert torch.isfinite(loss), f"loss is not finite at step {step}: {loss.item()}"
 
             optimizer.zero_grad()
@@ -88,12 +97,37 @@ def test_tiny_pretrain_loss_decreases_and_stays_finite():
             losses.append(loss.item())
             step += 1
 
+    return losses
+
+
+def _assert_loss_decreased(losses: list[float], total_steps: int) -> None:
     early_avg = sum(losses[:5]) / 5
     late_avg = sum(losses[-5:]) / 5
     assert late_avg < early_avg, (
         f"expected loss to decrease over {total_steps} steps on this tiny, easily-overfit "
         f"dataset: early={early_avg:.4f} late={late_avg:.4f} (full trace: {losses})"
     )
+
+
+def test_tiny_pretrain_loss_decreases_and_stays_finite():
+    losses = _train_tiny_ijepa(torch.device("cpu"))
+    _assert_loss_decreased(losses, total_steps=40)
+
+
+def test_tiny_pretrain_loss_decreases_on_resolved_device():
+    """Same as the CPU test above, but on whatever device
+    wildjepa.utils.device.resolve_device() actually picks for this machine
+    (mps on Apple Silicon, cuda if available, cpu otherwise). This is the
+    test that should have caught a real PyTorch/MPS bug in PatchEmbed's
+    backward -- every test in this suite ran on CPU by default, so
+    pretraining had never actually been exercised on MPS until it was run
+    manually and immediately crashed (see docs/design.md "Honest
+    limitations"). Uses resolve_device("auto") rather than hardcoding a
+    backend, so this is safe in any environment: a GPU-less CI runner just
+    re-exercises cpu here, harmlessly."""
+    device = resolve_device("auto")
+    losses = _train_tiny_ijepa(device)
+    _assert_loss_decreased(losses, total_steps=40)
 
 
 def test_checkpoint_round_trip_produces_matching_encoder():
