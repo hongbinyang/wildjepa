@@ -89,6 +89,10 @@ def run_erm_baseline(cfg: DictConfig, device: torch.device) -> dict[str, float]:
 
     start_epoch = 0
     resume_from = cfg.train.get("resume_from", None)
+    if not resume_from and cfg.train.get("auto_resume", False) and latest_checkpoint.exists():
+        resume_from = str(latest_checkpoint)
+        logger.info("auto_resume=true: found existing checkpoint at %s", resume_from)
+
     if resume_from:
         state = load_training_checkpoint(resume_from, map_location=str(device))
         model.load_state_dict(state["model"])

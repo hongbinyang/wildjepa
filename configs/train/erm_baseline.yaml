@@ -9,3 +9,5 @@ eval_every: 1
 log_every: 50
 checkpoint_every_epochs: 1   # save a resumable checkpoint after every N epochs
 resume_from: null            # path to a checkpoints/erm_baseline_*.pt to resume from
+auto_resume: false           # if true and resume_from is unset, auto-resume from
+                              # outputs/<run_name>/checkpoints/erm_baseline_latest.pt if it exists

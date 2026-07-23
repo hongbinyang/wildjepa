@@ -7,3 +7,5 @@ eval_every: 1
 log_every: 20
 checkpoint_every_epochs: 1   # pretrain mode only: save a resumable checkpoint every N epochs
 resume_from: null            # pretrain mode only: path to a checkpoints/pretrain_*.pt to resume from
+auto_resume: false           # pretrain mode only: if true and resume_from is unset, auto-resume
+                              # from outputs/<run_name>/checkpoints/pretrain_latest.pt if it exists

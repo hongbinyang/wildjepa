@@ -102,3 +102,60 @@ def test_run_erm_baseline_resume_continues_from_checkpoint_not_from_scratch(tmp_
     )
     assert (checkpoint_dir / "erm_baseline_epoch2.pt").exists()
     assert (checkpoint_dir / "erm_baseline_epoch3.pt").exists()
+
+
+def test_auto_resume_false_ignores_existing_checkpoint_by_default(tmp_path, monkeypatch):
+    """auto_resume defaults to False -- reusing a run_name (and thus an
+    output_dir with an existing checkpoint) must NOT silently resume unless
+    explicitly asked to. This is what keeps run_name reuse safe: an
+    accidental name collision starts fresh and overwrites, rather than
+    silently continuing training on unrelated old weights."""
+    monkeypatch.setattr(erm_baseline, "_build_resnet50", _tiny_resnet)
+
+    cfg1 = _tiny_cfg(tmp_path, epochs=1)
+    erm_baseline.run_erm_baseline(cfg1, torch.device("cpu"))
+    checkpoint_dir = tmp_path / "checkpoints"
+    epoch1_mtime = (checkpoint_dir / "erm_baseline_epoch1.pt").stat().st_mtime
+
+    # same run_name/output_dir, no resume_from, auto_resume left at its
+    # False default -- should start over, not resume
+    cfg2 = _tiny_cfg(tmp_path, epochs=1)
+    erm_baseline.run_erm_baseline(cfg2, torch.device("cpu"))
+
+    assert (checkpoint_dir / "erm_baseline_epoch1.pt").stat().st_mtime > epoch1_mtime, (
+        "expected epoch1's checkpoint to be overwritten by a fresh run, not left alone"
+    )
+
+
+def test_auto_resume_true_resumes_from_latest_checkpoint_without_resume_from(tmp_path, monkeypatch):
+    """With auto_resume=true and no explicit resume_from, an existing
+    outputs/<run_name>/checkpoints/erm_baseline_latest.pt should be picked
+    up automatically -- the whole point being you only ever need to pass
+    run_name, not the checkpoint path, to continue a run."""
+    monkeypatch.setattr(erm_baseline, "_build_resnet50", _tiny_resnet)
+
+    cfg1 = _tiny_cfg(tmp_path, epochs=1)
+    erm_baseline.run_erm_baseline(cfg1, torch.device("cpu"))
+    checkpoint_dir = tmp_path / "checkpoints"
+    epoch1_mtime = (checkpoint_dir / "erm_baseline_epoch1.pt").stat().st_mtime
+
+    cfg2 = _tiny_cfg(tmp_path, epochs=3, auto_resume=True)
+    erm_baseline.run_erm_baseline(cfg2, torch.device("cpu"))
+
+    assert (checkpoint_dir / "erm_baseline_epoch1.pt").stat().st_mtime == epoch1_mtime, (
+        "auto_resume must not redo epoch 1"
+    )
+    assert (checkpoint_dir / "erm_baseline_epoch2.pt").exists()
+    assert (checkpoint_dir / "erm_baseline_epoch3.pt").exists()
+
+
+def test_auto_resume_true_starts_fresh_when_no_checkpoint_exists(tmp_path, monkeypatch):
+    """auto_resume=true on a brand-new run_name (nothing to resume from yet)
+    must not error -- it should just behave like a normal fresh run."""
+    monkeypatch.setattr(erm_baseline, "_build_resnet50", _tiny_resnet)
+    cfg = _tiny_cfg(tmp_path, epochs=1, auto_resume=True)
+
+    results = erm_baseline.run_erm_baseline(cfg, torch.device("cpu"))
+
+    assert (tmp_path / "checkpoints" / "erm_baseline_epoch1.pt").exists()
+    assert set(results) == {"val_macro_f1", "val_accuracy", "test_macro_f1", "test_accuracy"}
