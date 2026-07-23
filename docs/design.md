@@ -196,21 +196,34 @@ knows that a `test_macro_f1` result is the OOD comparison and `id_test_macro_f1`
 
 ## Honest limitations (not yet verified end-to-end)
 
-- **Verified on real hardware:** the full test suite (`pytest tests/`, 42/42) passes on real
-  Apple Silicon (MPS); the real `iWildCam2020-WILDS` data (~12GB) is downloaded and the WILDS
+- **Verified on real hardware:** the full test suite (`pytest tests/`, 47/47) passes on real
+  Apple Silicon (MPS) -- including device-aware backward tests (`test_patch_embed_backward_on_resolved_device`,
+  `test_forward_masked_backward_on_resolved_device`, `test_tiny_pretrain_loss_decreases_on_resolved_device`)
+  that run on `wildjepa.utils.device.resolve_device("auto")`'s actual result rather than assuming
+  CPU, added specifically because the bug below had been invisible to every prior test; the real `iWildCam2020-WILDS` data (~12GB) is downloaded and the WILDS
   API path (`iwildcam.py` -- splits, stratified-subset selection, label remapping) has been
-  exercised end to end against it, both via the `iwildcam_subset` smoke test and via the
-  supervised ERM baseline (below) training against the full real benchmark; the scratch I-JEPA
-  pipeline (masking, context/target encoding, prediction, loss, EMA update) has been verified
-  end to end on the synthetic dataset, including the automated integration test that checks loss
-  measurably decreases.
+  exercised end to end against it, both via the `iwildcam_subset` smoke test and via the Phase 0
+  ERM baseline, which has now completed a full 12-epoch run against the real benchmark:
+  id_test macro-F1 0.374 vs. published 0.47, test (OOD) macro-F1 0.274 vs. published 0.33 --
+  right order of magnitude, ID consistently above OOD as expected, validating the eval harness
+  even though it doesn't hit the published numbers exactly (expected, given we don't control
+  every detail of the original training recipe). The scratch I-JEPA pipeline (masking,
+  context/target encoding, prediction, loss, EMA update, checkpoint/resume) has been verified
+  end to end **on real MPS hardware** against the synthetic dataset.
+- **A real bug found and fixed getting there:** `PatchEmbed`'s `nn.Conv2d`-based patchify had
+  a PyTorch/MPS-specific autograd bug -- `Conv2d`'s backward on Apple Silicon raises `RuntimeError:
+  view size is not compatible with input tensor's size and stride` whenever its output feeds a
+  further op after a transpose/permute, which is exactly what every caller does (`+ pos_embed`,
+  masking, attention). This had never been exercised before: the test suite only ever ran this
+  path on CPU, so the bug was silent until pretraining was actually run on MPS. Fixed by
+  computing the same patchify operation via `F.unfold` + `F.linear` instead of calling the
+  `Conv2d` module's `forward` directly (numerically identical, verified to float32 precision;
+  `self.proj` stays a real `nn.Conv2d` for checkpoint-key compatibility -- see
+  `models/scratch/patch_embed.py`).
 - **Not yet verified:** the scratch I-JEPA pretraining objective has only been run against the
   synthetic dataset so far, not real `iWildCam` data -- see `roadmap.md` Phase 1. The
   `fb_ijepa`/`hf_ijepa` checkpoint-key-mapping assumptions haven't been checked against a real
-  official checkpoint (no checkpoint downloaded yet, no cross-backend embedding diff run). The
-  Phase 0 ERM baseline (`scripts/train_erm_baseline.py`) is implemented and was confirmed to run
-  correctly end to end, but its final reproduced macro-F1 number against the published
-  ~0.31-0.35 OOD baseline is still pending a completed run. No real I-JEPA linear-probe numbers
-  exist yet.
+  official checkpoint (no checkpoint downloaded yet, no cross-backend embedding diff run). No
+  real I-JEPA linear-probe numbers exist yet.
 
 See `roadmap.md` for the exact remaining steps and their current status.

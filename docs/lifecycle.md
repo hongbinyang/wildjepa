@@ -101,18 +101,20 @@ where that matters.
   then `kill -CONT <pid>` -- a plain OS-level freeze, no application support
   needed, works today for any script.
 - **Full stop and resume later** (process killed, machine rebooted, picking
-  back up in a new session): only `scripts/train_erm_baseline.py` supports
-  this today. It checkpoints model + optimizer + epoch index every
-  `train.checkpoint_every_epochs` epochs; resume with
-  `train.resume_from=<output_dir>/checkpoints/erm_baseline_latest.pt`.
-  Training continues at the epoch *after* the one recorded in the checkpoint
-  -- it does not redo completed epochs. Full walkthrough:
-  `usage.md#pausing-and-resuming-a-run`.
-- `scripts/train.py`'s `pretrain`/`finetune` modes do **not** yet support
-  this -- they only save a final checkpoint at the very end of the run, so a
-  killed pretraining run currently loses all progress. Worth the same
-  treatment as the ERM baseline once real pretraining runs get long enough
-  for it to matter (Phase 5 below).
+  back up in a new session): `scripts/train_erm_baseline.py` and
+  `scripts/train.py train.mode=pretrain` both support this. Each checkpoints
+  model + optimizer + epoch index every `train.checkpoint_every_epochs`
+  epochs; resume with `train.resume_from=<output_dir>/checkpoints/<...>_latest.pt`
+  (`erm_baseline_latest.pt` or `pretrain_latest.pt`). Training continues at
+  the epoch *after* the one recorded in the checkpoint -- it does not redo
+  completed epochs, and for `pretrain` the EMA momentum schedule (which
+  depends on absolute step count, not just epoch) picks up correctly too.
+  Full walkthrough: `usage.md#pausing-and-resuming-a-run`.
+- `scripts/train.py`'s `finetune` mode does **not** yet support this -- it
+  only saves a final checkpoint at the very end of the run, so a killed
+  fine-tuning run currently loses all progress. Worth the same treatment
+  once real fine-tuning runs get long enough for it to matter (Phase 7
+  below).
 
 ### Monitoring a run in progress
 
@@ -136,9 +138,14 @@ python scripts/train.py data=iwildcam_full train.mode=pretrain train.epochs=100 
     device=cuda data.batch_size=64
 ```
 
-Scratch backend only. Not yet run against real data (see `design.md`, "Honest
-limitations") -- this is the next real step after Phase 4 confirms the eval
-harness is trustworthy.
+Scratch backend only. Mechanically verified on real Apple Silicon MPS
+hardware (loss decreases cleanly, checkpoint/resume round-trips correctly),
+but not yet run against real iWildCam data -- this is the next real step
+after Phase 4 confirms the eval harness is trustworthy. Getting the MPS run
+working surfaced a real PyTorch/MPS bug in `Conv2d`'s backward (see
+`design.md`, "Honest limitations" and `models/scratch/patch_embed.py`) that
+had silently never been exercised before, since the test suite only ever ran
+this path on CPU.
 
 ## Phase 6: Cross-backend correctness check
 

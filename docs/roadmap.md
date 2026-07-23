@@ -7,11 +7,12 @@ Status key: `[ ]` not started · `[~]` scaffolded/stubbed · `[x]` done
 - [x] Repo structure, conda env, Hydra config system, git init
 - [x] Backend interface (`JEPAEncoder`/`JEPAPredictor`) + factory
 - [x] Stub `scratch` / `fb_ijepa` / `hf_ijepa` backends (raise `NotImplementedError`)
-- [~] Baseline sanity check: reproduce published WILDS ERM macro-F1 with a plain
+- [x] Baseline sanity check: reproduce published WILDS ERM macro-F1 with a plain
       supervised ResNet-50, to trust the eval harness before building on top of it.
-      `scripts/train_erm_baseline.py` implemented (docs/usage.md); a real run against
-      the full benchmark is in progress -- not yet checked off pending the actual
-      reproduced number.
+      Full 12-epoch run against the real benchmark complete: id_test macro-F1 0.374
+      (published 0.47), test (OOD) macro-F1 0.274 (published 0.33) -- right order of
+      magnitude, ID > OOD as expected. Eval harness trusted; see design.md "Honest
+      limitations" for the full reasoning.
 
 ## Phase 1 — Quick feasibility check (current target)
 
@@ -32,6 +33,21 @@ Status key: `[ ]` not started · `[~]` scaffolded/stubbed · `[x]` done
       `make_supervised_collate_fn` returned local closures, unpicklable by
       `multiprocessing`'s spawn context (macOS/Windows default) -- broke
       `DataLoader(num_workers>0)`. Converted to module-level callable classes.
+- [x] Added run identity (`run_name`, doubling as the output directory name),
+      `scripts/manage_runs.py` (list/delete), checkpoint + resume support for
+      `erm_baseline` and `pretrain` (not yet `finetune`/`linear_probe`), and
+      TensorBoard metrics logging (loss curves, per-split macro-F1/accuracy,
+      per-species F1) across all four training modes -- see `lifecycle.md`.
+- [x] Fixed a real PyTorch/MPS bug surfaced by running `pretrain` on real Apple
+      Silicon hardware for the first time: `Conv2d`'s MPS backward broke whenever
+      its output fed a further op after a transpose (exactly what patch embedding
+      always does next). Never caught before since the test suite only ran this
+      path on CPU. See `design.md` "Honest limitations" and
+      `models/scratch/patch_embed.py`.
+- [x] Closed the test-coverage gap that let the bug above go unnoticed: added
+      device-aware backward tests (`test_vit.py`, `test_integration_tiny_pretrain.py`)
+      that run on `resolve_device("auto")`'s actual result instead of assuming CPU --
+      safe in any environment since a GPU-less CI runner just re-exercises `cpu`.
 - [ ] Cross-check: load a released `facebookresearch/ijepa` checkpoint into `ScratchEncoder`,
       diff output embeddings against `fb_ijepa`/`hf_ijepa` backends on identical inputs (the
       within-scratch checkpoint round-trip test exists; the cross-backend one needs an actual

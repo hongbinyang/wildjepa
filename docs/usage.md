@@ -128,6 +128,8 @@ and [`configuration.md#backend`](configuration.md#backend)):
 | `train.lr` | Optimizer learning rate (AdamW). |
 | `train.weight_decay` | AdamW weight decay. |
 | `train.log_every` | Steps between loss log lines. |
+| `train.checkpoint_every_epochs` | Save a resumable checkpoint every N epochs (default 1). |
+| `train.resume_from` | Path to a `checkpoints/pretrain_*.pt` to resume from — see [Pausing and resuming a run](#pausing-and-resuming-a-run) below (same mechanism as the ERM baseline). |
 | `backend.encoder.*` | ViT architecture (depth, embed_dim, num_heads, patch_size). |
 | `backend.masking.*` | Multi-block masking geometry (target/context scale, aspect ratio, num target blocks). |
 | `backend.ema.*` | Target-encoder EMA momentum schedule. |
@@ -196,12 +198,14 @@ This script uses its own top-level Hydra config
 
 #### Pausing and resuming a run
 
-Every `checkpoint_every_epochs` epochs, model + optimizer + epoch index are saved to
-`<output_dir>/checkpoints/erm_baseline_epoch<N>.pt`, and `erm_baseline_latest.pt` is
-updated to always point at the most recent one. `<output_dir>` is
-`outputs/<run_name>` — give the run an explicit name so the checkpoint path is
-predictable and stable across resumes (see
-[Category: Run management](#category-run-management)).
+Both `scripts/train_erm_baseline.py` and `scripts/train.py train.mode=pretrain`
+support this (`finetune`/`linear_probe` don't yet — see `docs/roadmap.md`).
+Every `checkpoint_every_epochs` epochs, model + optimizer + epoch index are
+saved to `<output_dir>/checkpoints/<prefix>_epoch<N>.pt`
+(`erm_baseline`/`pretrain` respectively), and `<prefix>_latest.pt` is updated
+to always point at the most recent one. `<output_dir>` is `outputs/<run_name>`
+— give the run an explicit name so the checkpoint path is predictable and
+stable across resumes (see [Category: Run management](#category-run-management)).
 
 - **Temporary pause** (keep it in memory, resume in the same session): send the
   running process `SIGSTOP`, then `SIGCONT` when ready to continue — no code
@@ -209,20 +213,21 @@ predictable and stable across resumes (see
 - **Full stop and resume later** (process killed, machine rebooted, etc.): re-run
   with the same `run_name` and `train.resume_from` pointing at the last
   checkpoint. Training picks up at the epoch *after* the one recorded in the
-  checkpoint — it does not re-run completed epochs.
+  checkpoint — it does not re-run completed epochs. For `pretrain`, the EMA
+  momentum schedule (a function of absolute step, not just epoch) is
+  recomputed correctly on resume too.
 
 ```bash
-# named run, killed partway through (Ctrl-C or `kill`)
+# ERM baseline: named run, killed partway through (Ctrl-C or `kill`)
 python scripts/train_erm_baseline.py run_name=erm-baseline-v1
-
-# resume it -- same run_name keeps writing into the same outputs/erm-baseline-v1/
 python scripts/train_erm_baseline.py run_name=erm-baseline-v1 \
     train.resume_from=outputs/erm-baseline-v1/checkpoints/erm_baseline_latest.pt
-```
 
-Only `scripts/train_erm_baseline.py` has checkpoint/resume today —
-`scripts/train.py`'s `pretrain`/`finetune` modes save a final checkpoint but
-don't yet support resuming a killed run (see `docs/roadmap.md`).
+# I-JEPA pretraining: same pattern, different checkpoint prefix
+python scripts/train.py data=iwildcam_subset train.mode=pretrain run_name=ijepa-v1
+python scripts/train.py data=iwildcam_subset train.mode=pretrain run_name=ijepa-v1 \
+    train.resume_from=outputs/ijepa-v1/checkpoints/pretrain_latest.pt
+```
 
 ---
 

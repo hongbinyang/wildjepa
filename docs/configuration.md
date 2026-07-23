@@ -218,6 +218,8 @@ lr: 1.0e-3
 weight_decay: 0.05
 eval_every: 1
 log_every: 20
+checkpoint_every_epochs: 1
+resume_from: null
 ```
 
 | Field | Default | Meaning |
@@ -228,6 +230,8 @@ log_every: 20
 | `weight_decay` | `0.05` | AdamW weight decay. |
 | `eval_every` | `1` | Epochs between full-split evaluation passes (`finetune`). |
 | `log_every` | `20` | Steps between loss log lines (`pretrain`). |
+| `checkpoint_every_epochs` | `1` | `pretrain` only: save a resumable checkpoint to `<output_dir>/checkpoints/pretrain_epoch<N>.pt` (and update `pretrain_latest.pt`) every N epochs. |
+| `resume_from` | `null` | `pretrain` only: path to a checkpoint to resume from — see [`usage.md`](usage.md#pausing-and-resuming-a-run). |
 
 ### `train=erm_baseline` (default for `scripts/train_erm_baseline.py`)
 
