@@ -5,3 +5,5 @@ lr: 1.0e-3
 weight_decay: 0.05
 eval_every: 1
 log_every: 20
+checkpoint_every_epochs: 1   # pretrain mode only: save a resumable checkpoint every N epochs
+resume_from: null            # pretrain mode only: path to a checkpoints/pretrain_*.pt to resume from

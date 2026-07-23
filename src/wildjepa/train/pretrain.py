@@ -1,10 +1,20 @@
 """Self-supervised I-JEPA pretraining loop. Only meaningful for
 backend=scratch -- fb_ijepa/hf_ijepa are reference/inference backends, not
-wired into this training loop (see docs/design.md)."""
+wired into this training loop (see docs/design.md).
+
+Two distinct checkpoint formats get written, serving different purposes:
+  - <output_dir>/checkpoints/pretrain_epoch<N>.pt / pretrain_latest.pt --
+    full resumable training state (model + optimizer + epoch), for picking a
+    killed run back up via train.resume_from. Not meant for downstream eval.
+  - <output_dir>/pretrain_checkpoint.pt -- the final artifact downstream eval
+    scripts load (context/target encoder + predictor weights only, via
+    save_pretrain_checkpoint/ScratchEncoder), written once at the end.
+"""
 
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import torch
 from omegaconf import DictConfig
@@ -14,7 +24,13 @@ from wildjepa.data import build_dataset, make_pretrain_collate_fn
 from wildjepa.models.scratch import IJEPA
 from wildjepa.models.scratch.ema import momentum_schedule
 from wildjepa.models.scratch.masking import MaskingConfig
-from wildjepa.train.common import AverageMeter, MetricsLogger, save_pretrain_checkpoint
+from wildjepa.train.common import (
+    AverageMeter,
+    MetricsLogger,
+    load_training_checkpoint,
+    save_pretrain_checkpoint,
+    save_training_checkpoint,
+)
 from wildjepa.utils.seed import set_seed
 
 logger = logging.getLogger(__name__)
@@ -60,13 +76,35 @@ def run_pretraining(cfg: DictConfig, device: torch.device) -> IJEPA:
         model.trainable_parameters(), lr=cfg.train.lr, weight_decay=cfg.train.weight_decay
     )
 
-    total_steps = cfg.train.epochs * len(loader)
     momentum_start = cfg.backend.ema.momentum_start
     momentum_end = cfg.backend.ema.momentum_end
     metrics_logger = MetricsLogger(cfg.output_dir)
 
-    step = 0
-    for epoch in range(cfg.train.epochs):
+    checkpoint_dir = Path(cfg.output_dir) / "checkpoints"
+    latest_checkpoint = checkpoint_dir / "pretrain_latest.pt"
+    checkpoint_every = cfg.train.get("checkpoint_every_epochs", 1)
+
+    start_epoch = 0
+    resume_from = cfg.train.get("resume_from", None)
+    if resume_from:
+        state = load_training_checkpoint(resume_from, map_location=str(device))
+        model.load_state_dict(state["model"])
+        optimizer.load_state_dict(state["optimizer"])
+        start_epoch = state["epoch"] + 1
+        logger.info(
+            "Resumed from %s: completed epoch %d, continuing at epoch %d",
+            resume_from,
+            state["epoch"] + 1,
+            start_epoch + 1,
+        )
+
+    # total_steps/step are recomputed from cfg.train.epochs and start_epoch
+    # rather than saved in the checkpoint -- consistent whether cfg.train.epochs
+    # changed across the resume or not, and the EMA momentum schedule (which
+    # depends on absolute step) stays correct either way.
+    total_steps = cfg.train.epochs * len(loader)
+    step = start_epoch * len(loader)
+    for epoch in range(start_epoch, cfg.train.epochs):
         meter = AverageMeter()
         for batch in loader:
             images = batch["images"].to(device)
@@ -100,6 +138,12 @@ def run_pretraining(cfg: DictConfig, device: torch.device) -> IJEPA:
 
         logger.info("epoch %d/%d done, avg loss %.4f", epoch + 1, cfg.train.epochs, meter.avg)
         metrics_logger.log_scalar("train/loss_epoch", meter.avg, epoch + 1)
+
+        if (epoch + 1) % checkpoint_every == 0:
+            epoch_checkpoint = checkpoint_dir / f"pretrain_epoch{epoch + 1}.pt"
+            save_training_checkpoint(epoch_checkpoint, epoch, model, optimizer)
+            save_training_checkpoint(latest_checkpoint, epoch, model, optimizer)
+            logger.info("Saved resumable checkpoint: %s", epoch_checkpoint)
 
     checkpoint_path = f"{cfg.output_dir}/pretrain_checkpoint.pt"
     save_pretrain_checkpoint(model, checkpoint_path)
